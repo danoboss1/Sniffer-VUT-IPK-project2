@@ -1,6 +1,8 @@
 #include "ipk-sniffer.h"
 
-enum FLAGS { INTERFACE, TCP, UDP, PORT, DESTINATION_PORT, SOURCE_PORT, ICMP4, ICMP6, ARP, NDP, IGMP, MLD, NUMBER_OF_RESULTS };
+// S NEJAKOU KONSTANTOU JE MOZNO PROBLEM 
+
+enum FLAGS { INTERFACE, TCP, UDP, PORT, DESTINATION_PORT, SOURCE_PORT, ICMP4, ICMP6, ARP, NDP, IGMP, MLD, NUMBER_OF_PACKETS_TO_DISPLAY };
 
 typedef struct{
     char* interface_name;
@@ -88,6 +90,8 @@ bool argument_has_necessary_value(char *next_argument){
 // je to hlavny main
 int main(int argc, char *argv[]){
 
+    // struktura na ulozenie argumentov z parsovania
+    Setup setup;
     int opt;
 
     // tato konstanta je zle by som povedal, tuto musim definovat sam
@@ -100,7 +104,7 @@ int main(int argc, char *argv[]){
 	char *interface = NULL;
 	int port = 0;
 	int n = 1;
-	bool protocols[4] = {false, false, false, false, false, false, false, false, false, false, false, false, false};
+	bool FLAGS[13] = {false, false, false, false, false, false, false, false, false, false, false, false, false};
 
     // ./ipk-sniffer
     if (argc == 1){
@@ -119,76 +123,132 @@ int main(int argc, char *argv[]){
         }
     }
 
-    if (argc == 3){
-        if ((strcmp(argv[1], "-i") == 0) || (strcmp(argv[1], "--interface") == 0)){
-            if (argument_has_necessary_value(argv[2])){
-                // ulozim ju do struktury pre argumenty/settings
-                printf("mam value pre interface\n");
-            } else {
-                fprintf(stderr, "Wrong argument combination: cannot specify different argument without interface and its value(name)\n");
-                exit(1);
-            }
-        } else {
-            fprintf(stderr, "Wrong argument combination: with 2 arguments u can specify only interface and its value(name)\n");
-            exit(1);
-        }
-    }
-
     // all other combinations of parameters, but
     // ./ipk-sniffer -i and his variants has to have name_of_interface
     // ./ipk-sniffer -port_variants only with tcp and udp
 
-    // for (int i = 1; i < argc; i++){
-    //     if ((strcmp(argv[i], "--interface") == 0) || (strcmp(argv[i], "-i") == 0)) { 
-    //         // ak je za interface argumentom iny argument = interface bez hodnoty
-    //         if ((strcmp(argv[i], "--interface") == 0)){
+    for (int i = 1; i < argc; i++){
 
-    //         }
-    // }
+        if ((strcmp(argv[i], "-i") == 0) || (strcmp(argv[i], "--interface") == 0)){
+            if(i + 1 < argc){
+                if (argument_has_necessary_value(argv[++i])){
+                    // ulozim ju do struktury pre argumenty/settings
+                    setup.interface_name = argv[i];
+                    FLAGS[INTERFACE] = true;
 
-    // for (int i = 1; i < argc; i++){
+                    if (!interface_exist(setup.interface_name)) {
+                        fprintf(stderr, "Entered interface does not exist\n");
+                        exit(1);
+                    }
+                } else {
+                    fprintf(stderr, "Wrong argument combination: cannot specify different argument without interface and its value(name)\n");
+                    exit(1);
+                }
+            } else {
+                // pripad ked je prehodene poradenie argumentov a interface je posledny bez hodnoty
+                fprintf(stderr, "Missing interface name: cannot specify different argument without interface and its value(name)\n");
+                exit(1);
+            }
+        } else if ((strcmp(argv[i], "-p") == 0)){
+            if(i + 1 < argc){
+                if (argument_has_necessary_value(argv[++i])){
+                    // ulozim ju do struktury pre argumenty/settings
+                    setup.port = atoi(argv[i]);
+                    FLAGS[PORT] = true;
+                    
+                    // tuto mozno checknut ci je port v dobrom rozsahu
+                } else {
+                    fprintf(stderr, "Missing port value\n");
+                    exit(1);
+                }
+            } else {
+                // pripad ked je prehodene poradenie argumentov a interface je posledny bez hodnoty
+                fprintf(stderr, "Missing port value at the end of a command\n");
+                exit(1);
+            }
+        } else if ((strcmp(argv[i], "--port-destination") == 0)){
+            if(i + 1 < argc){
+                if (argument_has_necessary_value(argv[++i])){
+                    // ulozim ju do struktury pre argumenty/settings
+                    setup.destination_port = atoi(argv[i]);
+                    FLAGS[DESTINATION_PORT] = true;
+                    
+                    // tuto mozno checknut ci je port v dobrom rozsahu
+                } else {
+                    fprintf(stderr, "Missing destination port value\n");
+                    exit(1);
+                }
+            } else {
+                // pripad ked je prehodene poradenie argumentov a interface je posledny bez hodnoty
+                fprintf(stderr, "Missing destination port value at the end of a command\n");
+                exit(1);
+            }
+        } else if ((strcmp(argv[i], "--port-source") == 0)){
+            if(i + 1 < argc){
+                if (argument_has_necessary_value(argv[++i])){
+                    // ulozim ju do struktury pre argumenty/settings
+                    setup.source_port = atoi(argv[i]);
+                    FLAGS[SOURCE_PORT] = true;
+                    
+                    // tuto mozno checknut ci je port v dobrom rozsahu
+                } else {
+                    fprintf(stderr, "Missing source port value\n");
+                    exit(1);
+                }
+            } else {
+                // pripad ked je prehodene poradenie argumentov a interface je posledny bez hodnoty
+                fprintf(stderr, "Missing source port value at the end of a command\n");
+                exit(1);
+            }
+        } else if ((strcmp(argv[i], "-u") == 0) || (strcmp(argv[i], "--udp") == 0)){
+            FLAGS[UDP] = true;
+        } else if ((strcmp(argv[i], "-t") == 0) || (strcmp(argv[i], "--tcp") == 0)){
+            FLAGS[TCP] = true;
+        } else if ((strcmp(argv[i], "--icmp4") == 0)){
+            FLAGS[ICMP4] = true;
+        } else if ((strcmp(argv[i], "--icmp6") == 0)){
+            FLAGS[ICMP6] = true;
+        } else if ((strcmp(argv[i], "--arp") == 0)){
+            FLAGS[ARP] = true;
+        } else if ((strcmp(argv[i], "--ndp") == 0)){
+            FLAGS[NDP] = true;
+        } else if ((strcmp(argv[i], "--igmp") == 0)){
+            FLAGS[IGMP] = true;
+        } else if ((strcmp(argv[i], "--mld") == 0)){
+            FLAGS[MLD] = true;
+        } else if ((strcmp(argv[i], "-n") == 0)){
+            if(i + 1 < argc){
+                if (argument_has_necessary_value(argv[++i])){
+                    // ulozim ju do struktury pre argumenty/settings
+                    setup.n = atoi(argv[i]);
+                    FLAGS[NUMBER_OF_PACKETS_TO_DISPLAY] = true;
+                    
+                    // tuto mozno checknut ci je port v dobrom rozsahu
+                } else {
+                    fprintf(stderr, "Missing number of packets to display\n");
+                    exit(1);
+                }
+            } else {
+                // pripad ked je prehodene poradenie argumentov a interface je posledny bez hodnoty
+                fprintf(stderr, "Missing number of packets to display at the end of a command\n");
+                exit(1);
+            }
+        } else {
+            // -h pre dalsie spustenie aby vedel ako to pouzit
+            fprintf(stderr, "Not supported argument\n");
+            exit(1);
+        }
 
-    //     if ((strcmp(argv[i], "--interface") == 0) || (strcmp(argv[i], "-i") == 0)) {   
-    //         // do something
-            
-    //     }
 
-    //     // // help message 
-    //     // if ((strcmp(argv[i], "-h") == 0 ) || (strcmp(argv[i], "--help") == 0)) {
-    //     //     printf("./ipk-sniffer [-i rozhraní | --interface rozhraní] {-p ­­port}");
-    //     //     printf("{[--tcp|-t] [--udp|-u] [--arp] [--icmp] } {-n num}\n");
-    //     //     exit(0);
-    //     // }
-    //     // // interface 
-    //     // else if ((strcmp(argv[i], "-i") == 0) || (strcmp(argv[i], "--interface") == 0)) {
-    // }
-    // // toto musime nejako inak vymysliet lebo -i alebo --interface nemusi mat specifikovanu hodnotu
-    // while((opt = getopt(argc, argv, "i:p")) != -1)
-    // {
-    //     switch(opt)
-    //     {
-    //         case 'i':
-    //             interface = optarg;
-    //             // printf("interface: %s", interface);
-    //             if (optarg == NULL){
-    //                 print_interfaces(all_interfaces);
-    //             } else if (interface_exist(optarg)) {
-    //                 interface = optarg;
-    //             } else {
-    //                 fprintf(stderr, "Interface does not exist\n");
-    //                 exit(1);
-    //             }
-    //             break;
-    //         case 'p':
-    //             printf("Som v porte!");
-    //             break;
-    //         default:
-    //             printf("a pycu nefunguje to dobre este\n");
-    //             exit(1);
-    //     }
-    // }
 
+    }
+
+    // musime nejako aj zabezpecit, aby nedoslo k segmentation fault pri nezadani hodnoty poctu packetov, ktore chceme sledovat
+    // aj pre ostatne argumenty, a toto zabezpecim cez porovnanie i s argc
+
+    // NIE JE TO UPLNE OTESTOVANE ALE PRIBLIZNE TO FUNGUJE AKO MA
     printf("funguje to dobre\n");
+
     // ked bude zadane iba -i s hodnotou tiez iba print interfaces
     // print_interfaces(all_interfaces);
 
