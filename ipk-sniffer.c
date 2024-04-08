@@ -2,8 +2,16 @@
 
 // S NEJAKOU KONSTANTOU JE MOZNO PROBLEM 
 
-enum FLAGS { INTERFACE, TCP, UDP, PORT, DESTINATION_PORT, SOURCE_PORT, ICMP4, ICMP6, ARP, NDP, IGMP, MLD, NUMBER_OF_PACKETS_TO_DISPLAY };
+// dalsi krok je jednotlive vypisovanie a kontrolovanie cez wireshark
+// predtym mozno ci naozaj vsetky argumenty funguju tak ako maju a refactor struktur do ipk-sniffer.h
+// vytvorenie dalsich suborov
 
+enum FLAGS_ENUM { INTERFACE, TCP, UDP, PORT, DESTINATION_PORT, SOURCE_PORT, ICMP4, ICMP6, ARP, NDP, IGMP, MLD, NUMBER_OF_PACKETS_TO_DISPLAY };
+
+#define ENUM_LEN 13
+#define MAX_FILTER_LENGTH 100
+
+// ked berem tieto porty, tak asi iba jeden z nich to by som mohol skontrolovat pri parsovani argumentov
 typedef struct{
     char* interface_name;
     int port;
@@ -86,6 +94,43 @@ bool argument_has_necessary_value(char *next_argument){
     }
 }
 
+void FilterStringCreating(char* filter, bool* FLAGS, Setup setup){
+
+    if (FLAGS[PORT] == true){
+        snprintf(filter,MAX_FILTER_LENGTH,"port %s and ", setup.port);
+    } else {
+        snprintf(filter,MAX_FILTER_LENGTH," ");
+    }
+
+    if (FLAGS[DESTINATION_PORT] == true){
+        snprintf(filter,MAX_FILTER_LENGTH,"src port %d and", setup.destination_port);
+    } else {
+        snprintf(filter,MAX_FILTER_LENGTH," ");
+    }
+
+    if (FLAGS[SOURCE_PORT] == true){
+        snprintf(filter,MAX_FILTER_LENGTH,"dst port %d and", setup.destination_port);
+    } else {
+        snprintf(filter,MAX_FILTER_LENGTH," ");
+    }
+
+    // strcat pridava string na koniec uz existujuceho stringu 
+    // za kazdym tymto das or a na konci zmazes 3 znaky
+
+    if(FLAGS[TCP] && !FLAGS[UDP]){
+        strcat(filter, "( tcp ) or");
+    } else if (FLAGS[UDP] && !FLAGS[TCP]){
+        strcat(filter, "( udp ) or");
+    } else if (FLAGS[TCP] && FLAGS[UDP]){
+        strcat(filter, "( tcp or udp ) or");
+    }
+
+    // vymazat posledne 3 znaky z filter stringu, aby tam nebol ten or
+    size_t len = strlen(filter);
+    if (len >= 3) {
+    filter[len - 3] = '\0';}
+};
+
 // tu bude prebiehat parsovanie argumentov a volanie funkcii z ostatnych suborov
 // je to hlavny main
 int main(int argc, char *argv[]){
@@ -104,7 +149,15 @@ int main(int argc, char *argv[]){
 	char *interface = NULL;
 	int port = 0;
 	int n = 1;
-	bool FLAGS[13] = {false, false, false, false, false, false, false, false, false, false, false, false, false};
+    // pristupujem cez nazov prvku z enumu
+	bool FLAGS[ENUM_LEN] = {false, false, false, false, false, false, false, false, false, false, false, false, false};
+
+    char* filter[MAX_FILTER_LENGTH] = "";
+    // built-in premenna pre string filter
+    FilterStringCreating(filter, FLAGS, setup);
+
+    // toto budem pouzivat az neskor, cez compile tam nahram stringovy filter
+    struct bpf_program filter;
 
     // ./ipk-sniffer
     if (argc == 1){
