@@ -10,12 +10,13 @@
 #include <getopt.h>
 
 // network libraries
-#include <pcap.h>
+#include <pcap/pcap.h>
 #include <arpa/inet.h>
 #include <netinet/if_ether.h> //ethernet and arp frame 
 #include <netinet/ip_icmp.h>
 #include <netinet/ip6.h>
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
+
 
 // enum PROTOCOLS { TCP, UDP, ARP, ICMP };
