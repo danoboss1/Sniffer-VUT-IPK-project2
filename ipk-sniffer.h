@@ -18,6 +18,8 @@
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
 
+#include <netinet/ether.h>
+
 // #include <stddef.h>
 
 // enum PROTOCOLS { TCP, UDP, ARP, ICMP };

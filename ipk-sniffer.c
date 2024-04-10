@@ -1,5 +1,10 @@
 #include "ipk-sniffer.h"
 
+// Define ETHER_ADDR_LEN if not already defined
+#ifndef ETHER_ADDR_LEN
+#define ETHER_ADDR_LEN 6
+#endif
+
 // S NEJAKOU KONSTANTOU JE MOZNO PROBLEM 
 
 // dalsi krok je jednotlive vypisovanie a kontrolovanie cez wireshark
@@ -145,13 +150,55 @@ void FilterStringCreating(char* filter, Setup setup){
     }
 }
 
+// Function to print out the timestamp
+void print_out_timestamp(const struct timeval *timestamp) {
+    struct tm *local_time;
+    char timestamp_str[80];
+    time_t t;
+
+    t = timestamp->tv_sec;
+    local_time = localtime(&t);
+
+    strftime(timestamp_str, sizeof(timestamp_str), "%Y-%m-%dT%H:%M:%S", local_time);
+
+    printf("timestamp: %s.%06ld%+03d:%02d\n", timestamp_str, timestamp->tv_usec, 0, 0);
+}
+
 void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet){
     Setup *h_args = (Setup *)args;
 
-    // toto vypisuje viac ako jeden packet ked nie je zadane cislo
+
+    // filter mi uz zabezpecuje aby som dostaval iba packety, ktore su danych tipov
+    // takze zistim, aky packet som dostal a ten dany packet vypisem v spravnom tvare
+
+    // tu bude mozno nejaka struktura ether
+    // struct pcap_pkthdr header;
+    print_out_timestamp(&header->ts);
+
+    // Parse Ethernet header
+    // struct ether_header *eth_header = (struct ether_header *)packet;
+    struct ethhdr *eth_header = (struct ethhdr *)packet;
+    
+    // Convert source MAC address to string format
+    char source_mac_str[ETHER_ADDR_LEN * 3];
+    snprintf(source_mac_str, sizeof(source_mac_str), "%02x:%02x:%02x:%02x:%02x:%02x",
+             eth_header->h_source[0], eth_header->h_source[1], eth_header->h_source[2],
+             eth_header->h_source[3], eth_header->h_source[4], eth_header->h_source[5]);
+    
+    // Convert destination MAC address to string format
+    char dest_mac_str[ETHER_ADDR_LEN * 3];
+    snprintf(dest_mac_str, sizeof(dest_mac_str), "%02x:%02x:%02x:%02x:%02x:%02x",
+             eth_header->h_dest[0], eth_header->h_dest[1], eth_header->h_dest[2],
+             eth_header->h_dest[3], eth_header->h_dest[4], eth_header->h_dest[5]);
+
+    // Print source and destination MAC addresses
+    printf("src MAC: %s\n", source_mac_str);
+    printf("dst MAC: %s\n", dest_mac_str);
 
     // toto je iba skuska na vypisanie nejakych bajtov z packetu
-    printf("Packet captured, length: %d\n", header->len);
+    printf("frame length: %d\n", header->len);
+
+    // teraz vyprintovat src IP, dst IP, src port and dst port podla toho aky protokol to je cez if else
     
     // Print the first 20 bytes of the packet (change this as needed)
     for (int i = 0; i < 20 && i < header->len; i++) {
@@ -176,9 +223,11 @@ int main(int argc, char *argv[]){
     get_all_interfaces(&all_interfaces, errbuf);
 
     // variables to set up sniffer 
+    // toto asi inicializovat default hodnoty premennych v setup strukture
 	char *interface = NULL;
 	int port = 0;
 	int n = 1;
+    
     // pristupujem cez nazov prvku z enumu
 
 	// Initialize setup.FLAGS array to false, 0 .. 13
@@ -323,6 +372,11 @@ int main(int argc, char *argv[]){
 
     }
 
+    // nastavenie poctu packetov na default verziu
+    if(setup.FLAGS[NUMBER_OF_PACKETS_TO_DISPLAY] == false){
+        setup.n = 1;
+    }
+
     char filter[MAX_FILTER_LENGTH] = "";
     // built-in premenna pre string filter
     FilterStringCreating(filter, setup);
@@ -396,6 +450,8 @@ int main(int argc, char *argv[]){
         pcap_freealldevs(all_interfaces);
         return 1;
     }
+
+    // TERAZ BY SOM CHEL VYPISAT CAS NAJPRV TOHO PACKETU
 
     // toto je uz ten zkompilovany filter
     pcap_freecode(&fp);
