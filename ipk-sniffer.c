@@ -15,6 +15,7 @@ enum FLAGS_ENUM { INTERFACE, TCP, UDP, PORT, DESTINATION_PORT, SOURCE_PORT, ICMP
 
 // ked berem tieto porty, tak asi iba jeden z nich to by som mohol skontrolovat pri parsovani argumentov
 typedef struct{
+    bool FLAGS[ENUM_LEN];
     char* interface_name;
     int port;
     int destination_port;
@@ -96,44 +97,44 @@ bool argument_has_necessary_value(char *next_argument){
     }
 }
 
-void FilterStringCreating(char* filter, bool* FLAGS, Setup setup){
+void FilterStringCreating(char* filter, Setup setup){
 
-    if (FLAGS[PORT] == true){
+    if (setup.FLAGS[PORT] == true){
         snprintf(filter,MAX_FILTER_LENGTH,"port %d and ", setup.port);
     } 
 
-    if (FLAGS[DESTINATION_PORT] == true){
+    if (setup.FLAGS[DESTINATION_PORT] == true){
         snprintf(filter,MAX_FILTER_LENGTH,"src port %d and", setup.destination_port);
     } 
 
-    if (FLAGS[SOURCE_PORT] == true){
+    if (setup.FLAGS[SOURCE_PORT] == true){
         snprintf(filter,MAX_FILTER_LENGTH,"dst port %d and", setup.destination_port);
     } 
 
     // strcat pridava string na koniec uz existujuceho stringu 
     // za kazdym tymto das or a na konci zmazes 3 znaky
 
-    if(FLAGS[TCP] && !FLAGS[UDP]){
+    if(setup.FLAGS[TCP] && !setup.FLAGS[UDP]){
         strcat(filter, "( tcp ) or ");
-    } else if (FLAGS[UDP] && !FLAGS[TCP]){
+    } else if (setup.FLAGS[UDP] && !setup.FLAGS[TCP]){
         strcat(filter, "( udp ) or ");
-    } else if (FLAGS[TCP] && FLAGS[UDP]){
+    } else if (setup.FLAGS[TCP] && setup.FLAGS[UDP]){
         strcat(filter, "( tcp or udp ) or ");
     }
 
-    if(FLAGS[ARP]){
+    if(setup.FLAGS[ARP]){
         strcat(filter,"arp or ");
     }
-    if(FLAGS[ICMP4]){
+    if(setup.FLAGS[ICMP4]){
         strcat(filter,"icmp4 or ");
     }
-    if(FLAGS[ICMP6]){
+    if(setup.FLAGS[ICMP6]){
         strcat(filter,"icmp6 or ");
     }
-    if(FLAGS[IGMP]){
+    if(setup.FLAGS[IGMP]){
         strcat(filter,"igmp or ");
     }
-    if(FLAGS[MLD]){
+    if(setup.FLAGS[MLD]){
         strcat(filter,"mld or ");
     }
 
@@ -142,6 +143,22 @@ void FilterStringCreating(char* filter, bool* FLAGS, Setup setup){
     if (len >= 4) {
     filter[len - 4] = '\0';
     }
+}
+
+void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet){
+    Setup *h_args = (Setup *)args;
+
+    // toto vypisuje viac ako jeden packet ked nie je zadane cislo
+
+    // toto je iba skuska na vypisanie nejakych bajtov z packetu
+    printf("Packet captured, length: %d\n", header->len);
+    
+    // Print the first 20 bytes of the packet (change this as needed)
+    for (int i = 0; i < 20 && i < header->len; i++) {
+        printf("%02x ", packet[i]);
+    }
+    printf("\n");
+
 }
 
 // tu bude prebiehat parsovanie argumentov a volanie funkcii z ostatnych suborov
@@ -163,7 +180,11 @@ int main(int argc, char *argv[]){
 	int port = 0;
 	int n = 1;
     // pristupujem cez nazov prvku z enumu
-	bool FLAGS[ENUM_LEN] = {false, false, false, false, false, false, false, false, false, false, false, false, false};
+
+	// Initialize setup.FLAGS array to false, 0 .. 13
+    for (int i = 0; i < ENUM_LEN; i++) {
+        setup.FLAGS[i] = false;
+    }
 
     // ./ipk-sniffer
     if (argc == 1){
@@ -193,7 +214,7 @@ int main(int argc, char *argv[]){
                 if (argument_has_necessary_value(argv[++i])){
                     // ulozim ju do struktury pre argumenty/settings
                     setup.interface_name = argv[i];
-                    FLAGS[INTERFACE] = true;
+                    setup.FLAGS[INTERFACE] = true;
 
                     if (!interface_exist(setup.interface_name)) {
                         fprintf(stderr, "Entered interface does not exist\n");
@@ -213,7 +234,7 @@ int main(int argc, char *argv[]){
                 if (argument_has_necessary_value(argv[++i])){
                     // ulozim ju do struktury pre argumenty/settings
                     setup.port = atoi(argv[i]);
-                    FLAGS[PORT] = true;
+                    setup.FLAGS[PORT] = true;
                     
                     // tuto mozno checknut ci je port v dobrom rozsahu
                 } else {
@@ -230,7 +251,7 @@ int main(int argc, char *argv[]){
                 if (argument_has_necessary_value(argv[++i])){
                     // ulozim ju do struktury pre argumenty/settings
                     setup.destination_port = atoi(argv[i]);
-                    FLAGS[DESTINATION_PORT] = true;
+                    setup.FLAGS[DESTINATION_PORT] = true;
                     
                     // tuto mozno checknut ci je port v dobrom rozsahu
                 } else {
@@ -247,7 +268,7 @@ int main(int argc, char *argv[]){
                 if (argument_has_necessary_value(argv[++i])){
                     // ulozim ju do struktury pre argumenty/settings
                     setup.source_port = atoi(argv[i]);
-                    FLAGS[SOURCE_PORT] = true;
+                    setup.FLAGS[SOURCE_PORT] = true;
                     
                     // tuto mozno checknut ci je port v dobrom rozsahu
                 } else {
@@ -260,27 +281,27 @@ int main(int argc, char *argv[]){
                 exit(1);
             }
         } else if ((strcmp(argv[i], "-u") == 0) || (strcmp(argv[i], "--udp") == 0)){
-            FLAGS[UDP] = true;
+            setup.FLAGS[UDP] = true;
         } else if ((strcmp(argv[i], "-t") == 0) || (strcmp(argv[i], "--tcp") == 0)){
-            FLAGS[TCP] = true;
+            setup.FLAGS[TCP] = true;
         } else if ((strcmp(argv[i], "--icmp4") == 0)){
-            FLAGS[ICMP4] = true;
+            setup.FLAGS[ICMP4] = true;
         } else if ((strcmp(argv[i], "--icmp6") == 0)){
-            FLAGS[ICMP6] = true;
+            setup.FLAGS[ICMP6] = true;
         } else if ((strcmp(argv[i], "--arp") == 0)){
-            FLAGS[ARP] = true;
+            setup.FLAGS[ARP] = true;
         } else if ((strcmp(argv[i], "--ndp") == 0)){
-            FLAGS[NDP] = true;
+            setup.FLAGS[NDP] = true;
         } else if ((strcmp(argv[i], "--igmp") == 0)){
-            FLAGS[IGMP] = true;
+            setup.FLAGS[IGMP] = true;
         } else if ((strcmp(argv[i], "--mld") == 0)){
-            FLAGS[MLD] = true;
+            setup.FLAGS[MLD] = true;
         } else if ((strcmp(argv[i], "-n") == 0)){
             if(i + 1 < argc){
                 if (argument_has_necessary_value(argv[++i])){
                     // ulozim ju do struktury pre argumenty/settings
                     setup.n = atoi(argv[i]);
-                    FLAGS[NUMBER_OF_PACKETS_TO_DISPLAY] = true;
+                    setup.FLAGS[NUMBER_OF_PACKETS_TO_DISPLAY] = true;
                     
                     // tuto mozno checknut ci je port v dobrom rozsahu
                 } else {
@@ -304,7 +325,7 @@ int main(int argc, char *argv[]){
 
     char filter[MAX_FILTER_LENGTH] = "";
     // built-in premenna pre string filter
-    FilterStringCreating(filter, FLAGS, setup);
+    FilterStringCreating(filter, setup);
 
     printf("%s", filter);
 
@@ -368,11 +389,30 @@ int main(int argc, char *argv[]){
         return 1;
     }
 
+    // tuto miesto NULL dat tu strukturu
+    int loop_return_code = pcap_loop(handle, setup.n, packet_handler, (unsigned char *)&setup);
+    if (loop_return_code == -1) {
+        fprintf(stderr, "[ ERR ] - pcap_loop() - maybe infinity - %s\n", errbuf);
+        pcap_freealldevs(all_interfaces);
+        return 1;
+    }
+
+    // toto je uz ten zkompilovany filter
+    pcap_freecode(&fp);
+    pcap_close(handle);
+    pcap_freealldevs(all_interfaces);
+
     // PCAP FUNKCIE NA SOCKET NIE SU OTESTOVANE, FILTER STRING JE V DOBROM TVARE A MAL BY FUNGOVAT
     // TUTO BUDE NASLEDOVAT PCAP_NEXT ALEBO PCAP_LOOP
     // KDE BUDEM ZAZNAMENAVAT KONKRETNE PACKETY
     // Z TYCH PACKIET MUSIM NEJAKO ZISKAT POTREBNE INFORMACIE 
     // NEJAKE FUNKCIE KTORE TO ESTE AJ VYPISU V POZADOVANOM FORMATE
+
+    // FUNKCIA PCAP_LOOP DO KTOREJ VLOZIM FUNKCIU S PREDNASTAVENYM TVAROM
+    // V TEJTO FUNKCII SI MUSIM DEFINOVAT A PRETYPOVAT ZOPAR VECI
+    // A POSLAT SETUP STRUKTURU S POLOM BOOLOV - TOTO VSETKO ZABALENE V STRUKTURE, PRETYPOVOVAT, POSLAT, ROZBALIT V TEN FUNKCII TYM, ZE TO PRETYPUJEM NASPAT
+
+    // ERROROVE HLASKY V INOM TVARE
 
     // musime nejako aj zabezpecit, aby nedoslo k segmentation fault pri nezadani hodnoty poctu packetov, ktore chceme sledovat
     // aj pre ostatne argumenty, a toto zabezpecim cez porovnanie i s argc
