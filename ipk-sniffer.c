@@ -162,123 +162,115 @@ void print_out_timestamp(const struct timeval *timestamp) {
 
     strftime(timestamp_str, sizeof(timestamp_str), "%Y-%m-%dT%H:%M:%S", local_time);
 
-    // Print milliseconds with three digits
     printf("%s.%03ld%+03d:%02d\n", timestamp_str, timestamp->tv_usec / 1000, 0, 0);
 }
 
+// process a packet and print required information about the packet
 void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet){
+
+    // unused, but packet_handler function will not work without it
     Setup *h_args = (Setup *)args;
 
-
-    // filter mi uz zabezpecuje aby som dostaval iba packety, ktore su danych tipov
-    // takze zistim, aky packet som dostal a ten dany packet vypisem v spravnom tvare
-
-    // tu bude mozno nejaka struktura ether
-    // struct pcap_pkthdr header;
     print_out_timestamp(&header->ts);
 
-    // Parse Ethernet header
-    // struct ether_header *eth_header_for_ip_arp = (struct ether_header *)packet;
+    // parse Ethernet header
     struct ethhdr *eth_header = (struct ethhdr *)packet;
     
-    
-    // Convert source MAC address to string format
+    // convert source MAC address to string format
     char source_mac_str[ETHER_ADDR_LEN * 3];
     snprintf(source_mac_str, sizeof(source_mac_str), "%02x:%02x:%02x:%02x:%02x:%02x",
              eth_header->h_source[0], eth_header->h_source[1], eth_header->h_source[2],
              eth_header->h_source[3], eth_header->h_source[4], eth_header->h_source[5]);
     
-    // Convert destination MAC address to string format
+    // convert destination MAC address to string format
     char dest_mac_str[ETHER_ADDR_LEN * 3];
     snprintf(dest_mac_str, sizeof(dest_mac_str), "%02x:%02x:%02x:%02x:%02x:%02x",
              eth_header->h_dest[0], eth_header->h_dest[1], eth_header->h_dest[2],
              eth_header->h_dest[3], eth_header->h_dest[4], eth_header->h_dest[5]);
 
-    // Print source and destination MAC addresses
+    // print source and destination MAC addresses
     printf("src MAC: %s\n", source_mac_str);
     printf("dst MAC: %s\n", dest_mac_str);
 
-    // toto je iba skuska na vypisanie nejakych bajtov z packetu
-    printf("frame length: %d\n", header->len);
+    // print message length
+    printf("frame length: %d bytes\n", header->len);
 
     // buffer for ip adresses
     char buffer[INET_ADDRSTRLEN];
 
-    // Check Ethernet type and process accordingly
+    // check ethernet layer protocol
     if (ntohs(eth_header->h_proto) == ETH_P_IP) {
-        // IPv4 packet
-        struct ip *ip_header = (struct ip*)(packet + sizeof(struct ethhdr));  // Skip Ethernet header
+        // IPv4 packet, skip ethernet header
+        struct ip *ip_header = (struct ip*)(packet + sizeof(struct ethhdr));  
 
-        // Print source and destination IP addresses
         printf("src IP: %s\n", inet_ntop(AF_INET, &ip_header->ip_src, buffer, INET_ADDRSTRLEN));
         printf("dst IP: %s\n", inet_ntop(AF_INET, &ip_header->ip_dst, buffer, INET_ADDRSTRLEN));
 
-        // Process based on the IP protocol
-        if (ip_header->ip_p == 1) { // ICMP
-            struct icmphdr *icmp_hdr = (struct icmphdr*) (packet + sizeof(struct ethhdr) + ip_header->ip_hl * 4);
-            printf("toto je ICMP\n");
-        } else if (ip_header->ip_p == 6) { // TCP
+        // check IP protocol
+        if (ip_header->ip_p == 6) { // TCP
             struct tcphdr* tcp_hdr = (struct tcphdr*) (packet + sizeof(struct ethhdr) + ip_header->ip_hl * 4);
             printf("src port: %d\n", ntohs(tcp_hdr->th_sport));
             printf("dst port: %d\n", ntohs(tcp_hdr->th_dport));
-            printf("toto je TCP\n");
         } else if (ip_header->ip_p == 17) { // UDP
             struct udphdr *udp_hdr = (struct udphdr*) (packet + sizeof(struct ethhdr) + ip_header->ip_hl * 4);
             printf("src port: %d\n", ntohs(udp_hdr->uh_sport));
             printf("dst port: %d\n", ntohs(udp_hdr->uh_dport));
-            printf("toto je UDP\n");
-        } else if (ip_header->ip_p == 2) { // IGMP
-            // Assuming the packet contains IGMP message
-            printf("toto je IGMP\n");
-        } else if (ip_header->ip_p == 58) { // ICMPv6 (MLD is a part of ICMPv6)
-            // Assuming the packet contains MLD message
-            printf("toto je MLD\n");
-        }
+        } 
+
+        // if (ip_header->ip_p == 1) { // ICMP
+        //     printf("toto je ICMP\n");
+        // } else if (ip_header->ip_p == 2) { // IGMP
+        //     printf("toto je IGMP\n");
+        // } else if (ip_header->ip_p == 58) { // MLD
+        //     printf("toto je MLD\n");
+        // }
+
     } else if (ntohs(eth_header->h_proto) == ETHERTYPE_ARP) { // ARP
-        struct ether_arp *et_arp = (struct ether_arp*)(packet + sizeof(struct ethhdr));
+        struct ether_arp *et_arp = (struct ether_arp*)(packet + sizeof(struct ethhdr));  // skip ethernet header
         
         printf("src IP: %s\n", inet_ntop(AF_INET, &et_arp->arp_spa, buffer, INET_ADDRSTRLEN));
         printf("dst IP: %s\n", inet_ntop(AF_INET, &et_arp->arp_tpa, buffer, INET_ADDRSTRLEN));
-    }
-    // IPv6
-    else if (ntohs(eth_header->h_proto) == ETHERTYPE_IPV6) { // IPv6
-        struct ip6_hdr *ip6_header = (struct ip6_hdr*)(packet + sizeof(struct ethhdr));  // Skip Ethernet header
+    } else if (ntohs(eth_header->h_proto) == ETHERTYPE_IPV6) { // IPv6
+        struct ip6_hdr *ip6_header = (struct ip6_hdr*)(packet + sizeof(struct ethhdr));  // skip ethernet header
 
         printf("src IP: %s\n", inet_ntop(AF_INET6, &ip6_header->ip6_src, buffer, INET6_ADDRSTRLEN));
         printf("dst IP: %s\n", inet_ntop(AF_INET6, &ip6_header->ip6_dst, buffer, INET6_ADDRSTRLEN));
         
-        // Process based on the next header protocol
-        if (ip6_header->ip6_ctlun.ip6_un1.ip6_un1_nxt == 58) { // ICMP6
-            // Assuming the packet contains ICMPv6 message
-            printf("toto je ICMPv6\n");
-        } else if (ip6_header->ip6_ctlun.ip6_un1.ip6_un1_nxt == 6) { // TCP
-            // Assuming the packet contains TCP segment
-            printf("toto je TCPv6\n");
+        // process based on the next header protocol
+        if (ip6_header->ip6_ctlun.ip6_un1.ip6_un1_nxt == 6) { // TCP
+            struct tcphdr* tcp_hdr = (struct tcphdr*) ((uint8_t*)ip6_header + sizeof(struct ip6_hdr));  // Point to TCP header
+            printf("src port: %d\n", ntohs(tcp_hdr->th_sport));
+            printf("dst port: %d\n", ntohs(tcp_hdr->th_dport));
         } else if (ip6_header->ip6_ctlun.ip6_un1.ip6_un1_nxt == 17) { // UDP
-            // Assuming the packet contains UDP datagram
-            printf("toto je UDPv6\n");
+            struct udphdr *udp_hdr = (struct udphdr*) ((uint8_t*)ip6_header + sizeof(struct ip6_hdr));  // Point to UDP header
+            printf("src port: %d\n", ntohs(udp_hdr->uh_sport));
+            printf("dst port: %d\n", ntohs(udp_hdr->uh_dport));
         }
+
+        // if (ip6_header->ip6_ctlun.ip6_un1.ip6_un1_nxt == 58) { // ICMP6
+        //     printf("toto je ICMPv6\n");
+        // }
     }
 
 
-    // teraz vyprintovat src IP, dst IP, src port and dst port podla toho aky protokol to je cez if else
-    
+    // empty line after packet information    
     printf("\n");
-    // Print the packet data in the desired format
-    for (int i = 0; i < header->len; i++) {
+
+    // print the packet data in the desired format
+    for (int i = 0; i < (int)header->len; i++) {
         if (i % 16 == 0) {
             printf("0x%04x: ", i);
         }
         printf("%02x ", packet[i]);
-        if ((i + 1) % 16 == 0 || i == header->len - 1) {
-            // Print additional spaces to align "dot info" section with previous rows
+        if ((i + 1) % 16 == 0 || i == (int)header->len - 1) {
+            // print additional spaces to align "dot info" section with previous rows
             int numSpaces = (16 - ((i % 16) + 1)) * 3;
             for (int k = 0; k < numSpaces; k++) {
                 printf(" ");
             }
             printf("   ");
             for (int j = i - (i % 16); j <= i; j++) {
-                if (j < 0 || j >= header->len) {
+                if (j < 0 || j >= (int)header->len) {
                     printf(" ");
                 } else if (isprint(packet[j])) {
                     printf("%c", packet[j]);
@@ -289,31 +281,22 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
             printf("\n");
         }
     }
-    printf("\n");
 
+    // empty line after "dot info"
+    printf("\n");
 }
 
-// tu bude prebiehat parsovanie argumentov a volanie funkcii z ostatnych suborov
-// je to hlavny main
+
+// main for packet sniffer, argument parsing
 int main(int argc, char *argv[]){
 
-    // struktura na ulozenie argumentov z parsovania
+    // structure for saving parsed arguments
     Setup setup;
-    int opt;
 
-    // tato konstanta je zle by som povedal, tuto musim definovat sam
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap_if_t *all_interfaces;
 
     get_all_interfaces(&all_interfaces, errbuf);
-
-    // variables to set up sniffer 
-    // toto asi inicializovat default hodnoty premennych v setup strukture
-	char *interface = NULL;
-	int port = 0;
-	int n = 1;
-    
-    // pristupujem cez nazov prvku z enumu
 
 	// Initialize setup.FLAGS array to false, 0 .. 13
     for (int i = 0; i < ENUM_LEN; i++) {
@@ -346,7 +329,6 @@ int main(int argc, char *argv[]){
         if ((strcmp(argv[i], "-i") == 0) || (strcmp(argv[i], "--interface") == 0)){
             if(i + 1 < argc){
                 if (argument_has_necessary_value(argv[++i])){
-                    // ulozim ju do struktury pre argumenty/settings
                     setup.interface_name = argv[i];
                     setup.FLAGS[INTERFACE] = true;
 
@@ -359,58 +341,64 @@ int main(int argc, char *argv[]){
                     exit(1);
                 }
             } else {
-                // pripad ked je prehodene poradenie argumentov a interface je posledny bez hodnoty
+                // the case when the order of arguments is mixed and the interface is the last without a value
                 fprintf(stderr, "Missing interface name: cannot specify different argument without interface and its value(name)\n");
                 exit(1);
             }
         } else if ((strcmp(argv[i], "-p") == 0)){
             if(i + 1 < argc){
                 if (argument_has_necessary_value(argv[++i])){
-                    // ulozim ju do struktury pre argumenty/settings
                     setup.port = atoi(argv[i]);
-                    setup.FLAGS[PORT] = true;
-                    
-                    // tuto mozno checknut ci je port v dobrom rozsahu
+                    if (setup.port >= 1 && setup.port <= 65535) { // check if the port is within the suitable range
+                        setup.FLAGS[PORT] = true;
+                    } else {
+                        fprintf(stderr, "Port number must be in the range 1 to 65535.\n");
+                        exit(1);
+                    }
                 } else {
                     fprintf(stderr, "Missing port value\n");
                     exit(1);
                 }
             } else {
-                // pripad ked je prehodene poradenie argumentov a interface je posledny bez hodnoty
+                // the case when the order of arguments is mixed and the port is the last without a value
                 fprintf(stderr, "Missing port value at the end of a command\n");
                 exit(1);
             }
         } else if ((strcmp(argv[i], "--port-destination") == 0)){
             if(i + 1 < argc){
                 if (argument_has_necessary_value(argv[++i])){
-                    // ulozim ju do struktury pre argumenty/settings
                     setup.destination_port = atoi(argv[i]);
-                    setup.FLAGS[DESTINATION_PORT] = true;
-                    
-                    // tuto mozno checknut ci je port v dobrom rozsahu
+                    if (setup.destination_port >= 1 && setup.destination_port <= 65535) { // check if the destination port is within the suitable range
+                        setup.FLAGS[DESTINATION_PORT] = true;
+                    } else {
+                        fprintf(stderr, "Destination port number must be in the range 1 to 65535.\n");
+                        exit(1);
+                    }
                 } else {
                     fprintf(stderr, "Missing destination port value\n");
                     exit(1);
                 }
             } else {
-                // pripad ked je prehodene poradenie argumentov a interface je posledny bez hodnoty
+                // the case when the order of arguments is mixed and the destination port is the last without a value
                 fprintf(stderr, "Missing destination port value at the end of a command\n");
                 exit(1);
             }
         } else if ((strcmp(argv[i], "--port-source") == 0)){
             if(i + 1 < argc){
                 if (argument_has_necessary_value(argv[++i])){
-                    // ulozim ju do struktury pre argumenty/settings
                     setup.source_port = atoi(argv[i]);
-                    setup.FLAGS[SOURCE_PORT] = true;
-                    
-                    // tuto mozno checknut ci je port v dobrom rozsahu
+                    if (setup.source_port >= 1 && setup.source_port <= 65535) { // check if the source port is within the suitable range
+                        setup.FLAGS[SOURCE_PORT] = true;
+                    } else {
+                        fprintf(stderr, "Source port number must be in the range 1 to 65535.\n");
+                        exit(1);
+                    }
                 } else {
                     fprintf(stderr, "Missing source port value\n");
                     exit(1);
                 }
             } else {
-                // pripad ked je prehodene poradenie argumentov a interface je posledny bez hodnoty
+                // the case when the order of arguments is mixed and the source port is the last without a value
                 fprintf(stderr, "Missing source port value at the end of a command\n");
                 exit(1);
             }
@@ -433,68 +421,48 @@ int main(int argc, char *argv[]){
         } else if ((strcmp(argv[i], "-n") == 0)){
             if(i + 1 < argc){
                 if (argument_has_necessary_value(argv[++i])){
-                    // ulozim ju do struktury pre argumenty/settings
                     setup.n = atoi(argv[i]);
                     setup.FLAGS[NUMBER_OF_PACKETS_TO_DISPLAY] = true;
-                    
-                    // tuto mozno checknut ci je port v dobrom rozsahu
                 } else {
                     fprintf(stderr, "Missing number of packets to display\n");
                     exit(1);
                 }
             } else {
-                // pripad ked je prehodene poradenie argumentov a interface je posledny bez hodnoty
+                // the case when the order of arguments is mixed and the number of packets to display is the last without a value
                 fprintf(stderr, "Missing number of packets to display at the end of a command\n");
                 exit(1);
             }
         } else {
-            // -h pre dalsie spustenie aby vedel ako to pouzit
             fprintf(stderr, "Not supported argument\n");
             exit(1);
         }
-
-
-
     }
 
-    // nastavenie poctu packetov na default verziu
+    // set the number of packets to display to default value
     if(setup.FLAGS[NUMBER_OF_PACKETS_TO_DISPLAY] == false){
         setup.n = 1;
     }
 
     char filter[MAX_FILTER_LENGTH] = "";
-    // built-in premenna pre string filter
+
     FilterStringCreating(filter, setup);
-
-    printf("%s", filter);
-
 
     // Declaring variables to store the network address and netmask obtained from pcap_lookupnet().
     bpf_u_int32 netp;
     bpf_u_int32 maskp;
 
-    // Call pcap_lookupnet() to retrieve the network address and netmask associated with the specified network interface.
-    // Arguments:
-    // - setup.interface_name: Name of the network interface for which network information is to be retrieved.
-    // - &netp: Pointer to store the retrieved network address.
-    // - &maskp: Pointer to store the retrieved netmask.
-    // - errbuf: Buffer to store any error messages in case of failure.
+    // retrieve the network address and netmask associated with the specified network interface.
     int lookup_return_code = pcap_lookupnet(setup.interface_name, &netp, &maskp, errbuf);
-
-    // Check the return code of pcap_lookupnet() for success or failure.
     if (lookup_return_code == -1) {
-        // If pcap_lookupnet() returns -1, indicating failure:
-        // Print an error message indicating the failure and the error message provided by pcap_lookupnet().
-        fprintf(stderr, "[ ERR ] - pcap_lookupnet() - %s\n", errbuf);
+        fprintf(stderr, "Error: pcap_lookupnet() - %s\n", errbuf);
 
-        // Free memory allocated by pcap_findalldevs() to prevent memory leaks.
+        // free memory allocated by pcap_findalldevs() to prevent memory leaks.
         pcap_freealldevs(all_interfaces);
-
-        // Return 1 to indicate failure to the caller.
         return 1;
     }
 
     pcap_t *handle;
+
     // create sniffing session
 	if ((handle = pcap_open_live(setup.interface_name, BUFSIZ, 1, 1000, errbuf)) == NULL)
 	{
@@ -502,7 +470,6 @@ int main(int argc, char *argv[]){
 		exit(1);
 	}
 
-    // nejake kontrola, neviem ci tu musi byt
     // check link-layer (Ethernet has to be supported)
 	if (pcap_datalink(handle) != DLT_EN10MB)
 	{
@@ -510,25 +477,24 @@ int main(int argc, char *argv[]){
 		exit(1);
 	}
 
-
-    // toto budem pouzivat az neskor, cez compile tam nahram stringovy filter, fp = filter
+    // variable to store filter string after compilation
     struct bpf_program fp;
 
     int compile_return_code = pcap_compile(handle, &fp, filter, 0, netp);
     if (compile_return_code == -1) {
-        fprintf(stderr, "[ ERR ] - pcap_compile() - %s\n", errbuf);
+        fprintf(stderr, "Error: pcap_compile() - %s\n", errbuf);
         pcap_freealldevs(all_interfaces);
         return 1;
     }
 
     int setfilter_return_code = pcap_setfilter(handle, &fp);
     if (setfilter_return_code == -1) {
-        fprintf(stderr, "[ ERR ] - pcap_setfilter() - %s\n", errbuf);
+        fprintf(stderr, "Error: pcap_setfilter() - %s\n", errbuf);
         pcap_freealldevs(all_interfaces);
         return 1;
     }
 
-    // tuto miesto NULL dat tu strukturu
+    // loop through number of packets to display, it calls a packet_handler function in every iteration
     int loop_return_code = pcap_loop(handle, setup.n, packet_handler, (unsigned char *)&setup);
     if (loop_return_code == -1) {
         fprintf(stderr, "[ ERR ] - pcap_loop() - maybe infinity - %s\n", errbuf);
@@ -536,32 +502,8 @@ int main(int argc, char *argv[]){
         return 1;
     }
 
-    // TERAZ BY SOM CHEL VYPISAT CAS NAJPRV TOHO PACKETU
-
-    // toto je uz ten zkompilovany filter
+    // free all alocated resources
     pcap_freecode(&fp);
     pcap_close(handle);
     pcap_freealldevs(all_interfaces);
-
-    // PCAP FUNKCIE NA SOCKET NIE SU OTESTOVANE, FILTER STRING JE V DOBROM TVARE A MAL BY FUNGOVAT
-    // TUTO BUDE NASLEDOVAT PCAP_NEXT ALEBO PCAP_LOOP
-    // KDE BUDEM ZAZNAMENAVAT KONKRETNE PACKETY
-    // Z TYCH PACKIET MUSIM NEJAKO ZISKAT POTREBNE INFORMACIE 
-    // NEJAKE FUNKCIE KTORE TO ESTE AJ VYPISU V POZADOVANOM FORMATE
-
-    // FUNKCIA PCAP_LOOP DO KTOREJ VLOZIM FUNKCIU S PREDNASTAVENYM TVAROM
-    // V TEJTO FUNKCII SI MUSIM DEFINOVAT A PRETYPOVAT ZOPAR VECI
-    // A POSLAT SETUP STRUKTURU S POLOM BOOLOV - TOTO VSETKO ZABALENE V STRUKTURE, PRETYPOVOVAT, POSLAT, ROZBALIT V TEN FUNKCII TYM, ZE TO PRETYPUJEM NASPAT
-
-    // ERROROVE HLASKY V INOM TVARE
-
-    // musime nejako aj zabezpecit, aby nedoslo k segmentation fault pri nezadani hodnoty poctu packetov, ktore chceme sledovat
-    // aj pre ostatne argumenty, a toto zabezpecim cez porovnanie i s argc
-
-    // NIE JE TO UPLNE OTESTOVANE ALE PRIBLIZNE TO FUNGUJE AKO MA
-    printf("funguje to dobre\n");
-
-    // ked bude zadane iba -i s hodnotou tiez iba print interfaces
-    // print_interfaces(all_interfaces);
-
 }
