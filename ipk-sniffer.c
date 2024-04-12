@@ -131,7 +131,7 @@ void FilterStringCreating(char* filter, Setup setup){
         strcat(filter,"arp or ");
     }
     if(setup.FLAGS[ICMP4]){
-        strcat(filter,"icmp4 or ");
+        strcat(filter,"icmp or ");
     }
     if(setup.FLAGS[ICMP6]){
         strcat(filter,"icmp6 or ");
@@ -139,8 +139,11 @@ void FilterStringCreating(char* filter, Setup setup){
     if(setup.FLAGS[IGMP]){
         strcat(filter,"igmp or ");
     }
-    if(setup.FLAGS[MLD]){
-        strcat(filter,"mld or ");
+    if (setup.FLAGS[MLD]) {
+        strcat(filter, "ip6 proto 58 or ");
+    }
+    if (setup.FLAGS[NDP]) {
+        strcat(filter, "icmp6[0] == 133 or icmp6[0] == 134 or icmp6[0] == 135 or icmp6[0] == 136 or icmp6[0] == 137 or ");
     }
 
     // vymazat posledne 3 znaky z filter stringu, aby tam nebol ten or
@@ -161,7 +164,8 @@ void print_out_timestamp(const struct timeval *timestamp) {
 
     strftime(timestamp_str, sizeof(timestamp_str), "%Y-%m-%dT%H:%M:%S", local_time);
 
-    printf("timestamp: %s.%06ld%+03d:%02d\n", timestamp_str, timestamp->tv_usec, 0, 0);
+    // Print milliseconds with three digits
+    printf("%s.%03ld%+03d:%02d\n", timestamp_str, timestamp->tv_usec / 1000, 0, 0);
 }
 
 void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const unsigned char *packet){
@@ -176,8 +180,9 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
     print_out_timestamp(&header->ts);
 
     // Parse Ethernet header
-    // struct ether_header *eth_header = (struct ether_header *)packet;
+    // struct ether_header *eth_header_for_ip_arp = (struct ether_header *)packet;
     struct ethhdr *eth_header = (struct ethhdr *)packet;
+    
     
     // Convert source MAC address to string format
     char source_mac_str[ETHER_ADDR_LEN * 3];
@@ -198,11 +203,88 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
     // toto je iba skuska na vypisanie nejakych bajtov z packetu
     printf("frame length: %d\n", header->len);
 
+    // buffer for ip adresses
+    char buffer[INET_ADDRSTRLEN];
+
+    // Check Ethernet type and process accordingly
+    if (ntohs(eth_header->h_proto) == ETH_P_IP) {
+        // IPv4 packet
+        struct ip *ip_header = (struct ip*)(packet + sizeof(struct ethhdr));  // Skip Ethernet header
+
+        // Print source and destination IP addresses
+        printf("src IP: %s\n", inet_ntop(AF_INET, &ip_header->ip_src, buffer, INET_ADDRSTRLEN));
+        printf("dst IP: %s\n", inet_ntop(AF_INET, &ip_header->ip_dst, buffer, INET_ADDRSTRLEN));
+
+        // Process based on the IP protocol
+        if (ip_header->ip_p == 1) { // ICMP
+            struct icmphdr *icmp_hdr = (struct icmphdr*) (packet + sizeof(struct ethhdr) + ip_header->ip_hl * 4);
+            printf("toto je ICMP\n");
+        } else if (ip_header->ip_p == 6) { // TCP
+            struct tcphdr* tcp_hdr = (struct tcphdr*) (packet + sizeof(struct ethhdr) + ip_header->ip_hl * 4);
+            printf("src port: %d\n", ntohs(tcp_hdr->th_sport));
+            printf("dst port: %d\n", ntohs(tcp_hdr->th_dport));
+            printf("toto je TCP\n");
+        } else if (ip_header->ip_p == 17) { // UDP
+            struct udphdr *udp_hdr = (struct udphdr*) (packet + sizeof(struct ethhdr) + ip_header->ip_hl * 4);
+            printf("src port: %d\n", ntohs(udp_hdr->uh_sport));
+            printf("dst port: %d\n", ntohs(udp_hdr->uh_dport));
+            printf("toto je UDP\n");
+        } else if (ip_header->ip_p == 2) { // IGMP
+            // Assuming the packet contains IGMP message
+            printf("toto je IGMP\n");
+        } else if (ip_header->ip_p == 58) { // ICMPv6 (MLD is a part of ICMPv6)
+            // Assuming the packet contains MLD message
+            printf("toto je MLD\n");
+        }
+    } else if (ntohs(eth_header->h_proto) == ETHERTYPE_ARP) { // ARP
+        struct ether_arp *et_arp = (struct ether_arp*)(packet + sizeof(struct ethhdr));
+        
+        printf("src IP: %s\n", inet_ntop(AF_INET, &et_arp->arp_spa, buffer, INET_ADDRSTRLEN));
+        printf("dst IP: %s\n", inet_ntop(AF_INET, &et_arp->arp_tpa, buffer, INET_ADDRSTRLEN));
+    }
+    // IPv6
+    else if (ntohs(eth_header->h_proto) == ETHERTYPE_IPV6) { // IPv6
+        struct ip6_hdr *ip6_header = (struct ip6_hdr*)(packet + sizeof(struct ethhdr));  // Skip Ethernet header
+
+        printf("src IP: %s\n", inet_ntop(AF_INET6, &ip6_header->ip6_src, buffer, INET6_ADDRSTRLEN));
+        printf("dst IP: %s\n", inet_ntop(AF_INET6, &ip6_header->ip6_dst, buffer, INET6_ADDRSTRLEN));
+        
+        // Process based on the next header protocol
+        if (ip6_header->ip6_ctlun.ip6_un1.ip6_un1_nxt == 58) { // ICMP6
+            // Assuming the packet contains ICMPv6 message
+            printf("toto je ICMPv6\n");
+        } else if (ip6_header->ip6_ctlun.ip6_un1.ip6_un1_nxt == 6) { // TCP
+            // Assuming the packet contains TCP segment
+            printf("toto je TCPv6\n");
+        } else if (ip6_header->ip6_ctlun.ip6_un1.ip6_un1_nxt == 17) { // UDP
+            // Assuming the packet contains UDP datagram
+            printf("toto je UDPv6\n");
+        }
+    }
+
+
     // teraz vyprintovat src IP, dst IP, src port and dst port podla toho aky protokol to je cez if else
     
-    // Print the first 20 bytes of the packet (change this as needed)
-    for (int i = 0; i < 20 && i < header->len; i++) {
+    printf("\n");
+    // Print the packet data in the desired format
+    for (int i = 0; i < header->len; i++) {
+        if (i % 16 == 0) {
+            printf("0x%04x: ", i);
+        }
         printf("%02x ", packet[i]);
+        if ((i + 1) % 16 == 0 || i == header->len - 1) {
+            printf("   ");
+            for (int j = i - 15; j <= i; j++) {
+                if (j < 0 || j >= header->len) {
+                    printf(" ");
+                } else if (isprint(packet[j])) {
+                    printf("%c", packet[j]);
+                } else {
+                    printf(".");
+                }
+            }
+            printf("\n");
+        }
     }
     printf("\n");
 

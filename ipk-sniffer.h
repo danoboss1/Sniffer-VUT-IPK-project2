@@ -1,3 +1,6 @@
+#ifndef IPK_SNIFFER
+#define IPK_SNIFFER
+
 // normal libraries 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,7 +22,11 @@
 #include <netinet/udp.h>
 
 #include <netinet/ether.h>
+// #include <netinet/if_ether.h>
+#include <netinet/ip.h>
 
 // #include <stddef.h>
 
 // enum PROTOCOLS { TCP, UDP, ARP, ICMP };
+
+#endif
