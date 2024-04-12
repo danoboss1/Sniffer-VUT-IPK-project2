@@ -1,32 +1,27 @@
 #ifndef IPK_SNIFFER
 #define IPK_SNIFFER
 
-// normal libraries 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <stdbool.h>
-#include <ctype.h>
-#include <sys/time.h>
-#include <time.h>
-#include <signal.h>
-#include <getopt.h>
 
-// network libraries
-#include <pcap/pcap.h>
-#include <arpa/inet.h>
-#include <netinet/if_ether.h> //ethernet and arp frame 
-#include <netinet/ip_icmp.h>
-#include <netinet/ip6.h>
-#include <netinet/tcp.h>
-#include <netinet/udp.h>
 
-#include <netinet/ether.h>
-// #include <netinet/if_ether.h>
-#include <netinet/ip.h>
+#ifndef ETHER_ADDR_LEN
+#define ETHER_ADDR_LEN 6
+#endif
 
-// #include <stddef.h>
+#define ENUM_LEN 13
+#define MAX_FILTER_LENGTH 100
 
-// enum PROTOCOLS { TCP, UDP, ARP, ICMP };
+
+enum FLAGS_ENUM { INTERFACE, TCP, UDP, PORT, DESTINATION_PORT, SOURCE_PORT, ICMP4, ICMP6, ARP, NDP, IGMP, MLD, NUMBER_OF_PACKETS_TO_DISPLAY };
+
+typedef struct{
+    bool FLAGS[ENUM_LEN];
+    char* interface_name;
+    int port;
+    int destination_port;
+    int source_port;
+    int n; // number of packet that will be shown
+} Setup;
+
 
 #endif

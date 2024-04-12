@@ -1,65 +1,63 @@
 #include "ipk-sniffer.h"
 
-// Define ETHER_ADDR_LEN if not already defined
-#ifndef ETHER_ADDR_LEN
-#define ETHER_ADDR_LEN 6
-#endif
+// normal libraries 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+#include <ctype.h>
+#include <sys/time.h>
+#include <time.h>
+#include <signal.h>
+#include <getopt.h>
 
-// S NEJAKOU KONSTANTOU JE MOZNO PROBLEM 
+// network libraries
+#include <pcap/pcap.h> // Packet capturing library
+#include <arpa/inet.h>
+#include <netinet/if_ether.h> //ethernet and arp frame 
+#include <netinet/ip_icmp.h>
+#include <netinet/ip6.h>
+#include <netinet/tcp.h>
+#include <netinet/udp.h>
+#include <netinet/ether.h>
+#include <netinet/ip.h>
 
-// dalsi krok je jednotlive vypisovanie a kontrolovanie cez wireshark
-// predtym mozno ci naozaj vsetky argumenty funguju tak ako maju a refactor struktur do ipk-sniffer.h
-// vytvorenie dalsich suborov
 
-// n znamena dlzka, kolkokrat to spustim, to zadavam az ked to budem vyhladavat
-
-enum FLAGS_ENUM { INTERFACE, TCP, UDP, PORT, DESTINATION_PORT, SOURCE_PORT, ICMP4, ICMP6, ARP, NDP, IGMP, MLD, NUMBER_OF_PACKETS_TO_DISPLAY };
-
-#define ENUM_LEN 13
-#define MAX_FILTER_LENGTH 100
-
-// ked berem tieto porty, tak asi iba jeden z nich to by som mohol skontrolovat pri parsovani argumentov
-typedef struct{
-    bool FLAGS[ENUM_LEN];
-    char* interface_name;
-    int port;
-    int destination_port;
-    int source_port;
-    int n;               // number of packet that will be shown
-} Setup;
-
-// pcap_if_t represents information about a network interface
+// print the names of the available interfaces
 int print_interfaces(pcap_if_t *all_interfaces)
 {
 	printf("Interfaces:\n");
 	
-	pcap_if_t *tmp;
-	for (tmp = all_interfaces; tmp; tmp = tmp->next)
+    // pcap_if_t represents information about a network interface
+	pcap_if_t *tmp_interfaces;
+	for (tmp_interfaces = all_interfaces; tmp_interfaces; tmp_interfaces = tmp_interfaces->next)
 	{
-		printf("-> %s\n", tmp->name);
+		printf("-> %s\n", tmp_interfaces->name);
 	}
 
 	exit(0);
 }
 
+// load all available interfaces
 int get_all_interfaces(pcap_if_t **all_interfaces, char *errbuf)
 {
 	if (pcap_findalldevs(all_interfaces, errbuf) == -1)
 	{
-		fprintf(stderr, "%s\n", errbuf);
+		fprintf(stderr, "Error: Cannot load available interfaces: %s\n", errbuf);
 		exit(1);
 	}
 
 	return 0;
 }
 
+// check if the interface with the given name exists
 bool interface_exist(char *int_name){
     pcap_if_t *inter_list;
     char error_message[PCAP_ERRBUF_SIZE];
 
-    // returns 0 on succes PCAP_ERROR on failure 
+    // returns 0 on success, PCAP_ERROR on failure 
     if(pcap_findalldevs(&inter_list, error_message) == PCAP_ERROR){
-        fprintf(stderr,"%s",error_message);
+        fprintf(stderr,"Error: Cannot find network interfaces: %s\n",error_message);
         pcap_freealldevs(inter_list);
         return false;
     } 
@@ -78,6 +76,7 @@ bool interface_exist(char *int_name){
     return false;
 }
 
+// check if after certain parameters is a necessary value
 bool argument_has_necessary_value(char *next_argument){
     if ((strcmp(next_argument, "-i") == 0) ||
         (strcmp(next_argument, "--interface") == 0) ||
@@ -96,29 +95,27 @@ bool argument_has_necessary_value(char *next_argument){
         (strcmp(next_argument, "--mld") == 0) ||
         (strcmp(next_argument, "-n") == 0))
     {
-        return false;
+        return false; // if there is another parameter not the expected value, return false
     } else {
         return true;
     }
 }
 
+// create raw filter string for pcap functions based on given parameters
 void FilterStringCreating(char* filter, Setup setup){
 
+    // ports
     if (setup.FLAGS[PORT] == true){
         snprintf(filter,MAX_FILTER_LENGTH,"port %d and ", setup.port);
     } 
-
     if (setup.FLAGS[DESTINATION_PORT] == true){
-        snprintf(filter,MAX_FILTER_LENGTH,"src port %d and", setup.destination_port);
-    } 
-
-    if (setup.FLAGS[SOURCE_PORT] == true){
         snprintf(filter,MAX_FILTER_LENGTH,"dst port %d and", setup.destination_port);
     } 
+    if (setup.FLAGS[SOURCE_PORT] == true){
+        snprintf(filter,MAX_FILTER_LENGTH,"src port %d and", setup.source_port);
+    } 
 
-    // strcat pridava string na koniec uz existujuceho stringu 
-    // za kazdym tymto das or a na konci zmazes 3 znaky
-
+    // tcp, udp
     if(setup.FLAGS[TCP] && !setup.FLAGS[UDP]){
         strcat(filter, "( tcp ) or ");
     } else if (setup.FLAGS[UDP] && !setup.FLAGS[TCP]){
@@ -127,6 +124,7 @@ void FilterStringCreating(char* filter, Setup setup){
         strcat(filter, "( tcp or udp ) or ");
     }
 
+    // other protocols
     if(setup.FLAGS[ARP]){
         strcat(filter,"arp or ");
     }
@@ -146,14 +144,14 @@ void FilterStringCreating(char* filter, Setup setup){
         strcat(filter, "icmp6[0] == 133 or icmp6[0] == 134 or icmp6[0] == 135 or icmp6[0] == 136 or icmp6[0] == 137 or ");
     }
 
-    // vymazat posledne 3 znaky z filter stringu, aby tam nebol ten or
+    // delete the ' or ' from the end of the raw filter string
     size_t len = strlen(filter);
     if (len >= 4) {
     filter[len - 4] = '\0';
     }
 }
 
-// Function to print out the timestamp
+// print out the current timestamp
 void print_out_timestamp(const struct timeval *timestamp) {
     struct tm *local_time;
     char timestamp_str[80];
@@ -273,8 +271,13 @@ void packet_handler(unsigned char *args, const struct pcap_pkthdr *header, const
         }
         printf("%02x ", packet[i]);
         if ((i + 1) % 16 == 0 || i == header->len - 1) {
+            // Print additional spaces to align "dot info" section with previous rows
+            int numSpaces = (16 - ((i % 16) + 1)) * 3;
+            for (int k = 0; k < numSpaces; k++) {
+                printf(" ");
+            }
             printf("   ");
-            for (int j = i - 15; j <= i; j++) {
+            for (int j = i - (i % 16); j <= i; j++) {
                 if (j < 0 || j >= header->len) {
                     printf(" ");
                 } else if (isprint(packet[j])) {
